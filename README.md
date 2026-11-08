@@ -41,3 +41,7 @@ database
 ```
 
 Метаданные созданных таблиц сохраняются в `db_meta.json` и доступны после повторного запуска программы.
+
+## Демонстрация работы
+
+[![asciicast](https://asciinema.org/a/WibPGYB5hPpK53G1.svg)]https://asciinema.org/a/WibPGYB5hPpK53G1
