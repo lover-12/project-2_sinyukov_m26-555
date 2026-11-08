@@ -1,42 +1,187 @@
+
+import re
 import shlex
 
 import prompt
+from prettytable import PrettyTable
 
-from primitive_db.core import create_table, drop_table
-from primitive_db.utils import load_metadata, save_metadata
+from primitive_db.core import (
+    create_table,
+    delete,
+    drop_table,
+    insert,
+    select,
+    update,
+)
+from primitive_db.parser import parse_condition, parse_value
+from primitive_db.utils import (
+    load_metadata,
+    load_table_data,
+    save_metadata,
+    save_table_data,
+)
 
 METADATA_FILE = "db_meta.json"
 
 
 def print_help():
-    """Выводит список доступных команд базы данных."""
-    print("Доступные команды:")
+    """Выводит справку по командам базы данных."""
+    print("***Операции с данными***")
     print("create_table <имя> <столбец:тип> ... - создать таблицу")
     print("drop_table <имя> - удалить таблицу")
-    print("list_tables - показать список таблиц")
-    print("help - показать справку")
-    print("exit - выйти из режима базы данных")
+    print("list_tables - показать все таблицы")
+    print("insert into <таблица> values (<значения>) - добавить запись")
+    print("select from <таблица> [where <условие>] - показать записи")
+    print("update <таблица> set <условие> where <условие> - обновить")
+    print("delete from <таблица> where <условие> - удалить записи")
+    print("info <таблица> - информация о таблице")
+    print("help - справочная информация")
+    print("exit - выход")
+
+
+def parse_values(text):
+    """Разбирает значения для команды insert."""
+    if not text.strip():
+        return []
+
+    lexer = shlex.shlex(text, posix=False)
+    lexer.whitespace = ","
+    lexer.whitespace_split = True
+    lexer.commenters = ""
+
+    return [str(parse_value(value.strip())) for value in lexer]
+
+
+def print_records(records, columns):
+    """Выводит записи в формате PrettyTable."""
+    table = PrettyTable()
+    table.field_names = list(columns)
+
+    for record in records:
+        table.add_row([record.get(column) for column in columns])
+
+    print(table)
+
+
+def handle_crud(command, metadata):
+    """Обрабатывает команды работы с записями."""
+    match = re.fullmatch(
+        r"insert\s+into\s+(\w+)\s+values\s*\((.*)\)",
+        command,
+        re.IGNORECASE,
+    )
+
+    if match:
+        table_name, values_text = match.groups()
+        values = parse_values(values_text)
+        data = insert(metadata, table_name, values)
+        save_table_data(table_name, data)
+        print(f'Запись с ID={data[-1]["ID"]} успешно добавлена.')
+        return True
+
+    match = re.fullmatch(
+        r"select\s+from\s+(\w+)(?:\s+where\s+(.+))?",
+        command,
+        re.IGNORECASE,
+    )
+
+    if match:
+        table_name, condition = match.groups()
+        if table_name not in metadata:
+            raise ValueError(f'Таблица "{table_name}" не существует.')
+
+        where_clause = parse_condition(condition) if condition else None
+        data = load_table_data(table_name)
+        records = select(data, where_clause)
+        print_records(records, metadata[table_name])
+        return True
+
+    match = re.fullmatch(
+        r"update\s+(\w+)\s+set\s+(.+?)\s+where\s+(.+)",
+        command,
+        re.IGNORECASE,
+    )
+
+    if match:
+        table_name, set_text, where_text = match.groups()
+        if table_name not in metadata:
+            raise ValueError(f'Таблица "{table_name}" не существует.')
+
+        set_clause = parse_condition(set_text)
+        where_clause = parse_condition(where_text)
+        data = load_table_data(table_name)
+        updated_data = update(
+            data,
+            set_clause,
+            where_clause,
+            metadata[table_name],
+        )
+        save_table_data(table_name, updated_data)
+        print(f'Записи таблицы "{table_name}" успешно обновлены.')
+        return True
+
+    match = re.fullmatch(
+        r"delete\s+from\s+(\w+)\s+where\s+(.+)",
+        command,
+        re.IGNORECASE,
+    )
+
+    if match:
+        table_name, where_text = match.groups()
+        if table_name not in metadata:
+            raise ValueError(f'Таблица "{table_name}" не существует.')
+
+        where_clause = parse_condition(where_text)
+        data = load_table_data(table_name)
+        updated_data = delete(data, where_clause)
+        save_table_data(table_name, updated_data)
+        print(f'Записи таблицы "{table_name}" успешно удалены.')
+        return True
+
+    match = re.fullmatch(r"info\s+(\w+)", command, re.IGNORECASE)
+
+    if match:
+        table_name = match.group(1)
+        if table_name not in metadata:
+            raise ValueError(f'Таблица "{table_name}" не существует.')
+
+        columns = metadata[table_name]
+        data = load_table_data(table_name)
+
+        print(f"Таблица: {table_name}")
+        print(
+            "Столбцы: "
+            + ", ".join(
+                f"{name}:{column_type}"
+                for name, column_type in columns.items()
+            )
+        )
+        print(f"Количество записей: {len(data)}")
+        return True
+
+    return False
 
 
 def run():
     """Запускает режим работы с базой данных."""
     print("***Процесс работы с таблицей***")
+    print_help()
 
     while True:
-        command = prompt.string("Введите команду: ")
+        command = prompt.string("Введите команду: ").strip()
+
+        if not command:
+            continue
 
         try:
+            metadata = load_metadata(METADATA_FILE)
+
+            if handle_crud(command, metadata):
+                continue
+
             parts = shlex.split(command)
-        except ValueError as error:
-            print(f"Ошибка: {error}")
-            continue
+            action, *args = parts
 
-        if not parts:
-            continue
-
-        action, *args = parts
-
-        try:
             if action == "exit":
                 break
 
@@ -48,27 +193,29 @@ def run():
                     print("Ошибка: укажите имя таблицы и столбцы.")
                     continue
 
-                metadata = load_metadata(METADATA_FILE)
                 create_table(metadata, args[0], args[1:])
                 save_metadata(METADATA_FILE, metadata)
+                columns = metadata[args[0]]
+                description = ", ".join(
+                    f"{name}:{column_type}"
+                    for name, column_type in columns.items()
+                )
                 print(f'Таблица "{args[0]}" успешно создана.')
+                print(f"Столбцы: {description}")
 
             elif action == "drop_table":
                 if len(args) != 1:
                     print("Ошибка: укажите имя таблицы.")
                     continue
 
-                metadata = load_metadata(METADATA_FILE)
                 drop_table(metadata, args[0])
                 save_metadata(METADATA_FILE, metadata)
                 print(f'Таблица "{args[0]}" успешно удалена.')
 
             elif action == "list_tables":
                 if args:
-                    print("Ошибка: команда list_tables не принимает аргументы.")
+                    print("Ошибка: команда не принимает аргументы.")
                     continue
-
-                metadata = load_metadata(METADATA_FILE)
 
                 if not metadata:
                     print("Таблиц пока нет.")
@@ -79,7 +226,7 @@ def run():
             else:
                 print("Неизвестная команда. Введите help.")
 
-        except ValueError as error:
+        except (ValueError, KeyError, FileNotFoundError) as error:
             print(f"Ошибка: {error}")
 
 

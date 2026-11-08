@@ -45,3 +45,99 @@ database
 ## Демонстрация работы
 
 [![asciicast](https://asciinema.org/a/WibPGYB5hPpK53G1.svg)]https://asciinema.org/a/WibPGYB5hPpK53G1
+
+## CRUD-операции
+
+Программа поддерживает четыре основные операции для работы с записями таблиц: добавление (Create), чтение (Read), обновление (Update) и удаление (Delete).
+
+Данные каждой таблицы хранятся в отдельном JSON-файле в директории `data/`. Например, записи таблицы `users` сохраняются в `data/users.json`.
+
+### Добавление записей — INSERT
+
+Команда:
+
+`insert into <имя_таблицы> values (<значения>)`
+
+Пример:
+
+```text
+insert into users values ("Sergei", 28, true)
+```
+
+Программа проверяет количество значений и их типы, автоматически генерирует ID и сохраняет запись.
+
+### Просмотр записей — SELECT
+
+Для просмотра всех записей:
+
+```text
+select from users
+```
+
+Для просмотра записей по условию:
+
+```text
+select from users where age = 28
+```
+
+Результаты отображаются в виде таблицы с помощью библиотеки PrettyTable.
+
+### Обновление записей — UPDATE
+
+Команда:
+
+`update <имя_таблицы> set <столбец> = <значение> where <столбец> = <значение>`
+
+Пример:
+
+```text
+update users set age = 29 where ID = 1
+```
+
+Программа находит подходящие записи и обновляет указанный столбец. Тип нового значения проверяется по схеме таблицы.
+
+### Удаление записей — DELETE
+
+Команда:
+
+`delete from <имя_таблицы> where <столбец> = <значение>`
+
+Пример:
+
+```text
+delete from users where ID = 1
+```
+
+Программа удаляет записи, соответствующие условию.
+
+### Информация о таблице — INFO
+
+Команда:
+
+```text
+info users
+```
+
+Выводит название таблицы, список столбцов с типами данных и количество записей.
+
+### Пример полного цикла CRUD
+
+Сначала создайте таблицу:
+
+```text
+create_table users name:str age:int is_active:bool
+```
+
+Затем выполните:
+
+```text
+insert into users values ("Sergei", 28, true)
+select from users
+select from users where age = 28
+update users set age = 29 where ID = 1
+select from users
+delete from users where ID = 1
+info users
+```
+
+Для строковых значений необходимо использовать двойные кавычки. Поддерживаются типы `int`, `str` и `bool`. Изменения записей сохраняются в JSON-файлах.
