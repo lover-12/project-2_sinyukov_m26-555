@@ -1,4 +1,3 @@
-
 import re
 import shlex
 
@@ -15,6 +14,8 @@ from primitive_db.core import (
 )
 from primitive_db.parser import parse_condition, parse_value
 from primitive_db.utils import (
+    create_cacher,
+    delete_table_data,
     load_metadata,
     load_table_data,
     save_metadata,
@@ -22,6 +23,9 @@ from primitive_db.utils import (
 )
 
 METADATA_FILE = "db_meta.json"
+
+
+select_cache = create_cacher()
 
 
 def print_help():
@@ -63,6 +67,16 @@ def print_records(records, columns):
     print(table)
 
 
+def validate_where(where_clause, columns):
+    """Проверяет существование столбцов в условии where."""
+    if where_clause is None:
+        return
+
+    for column in where_clause:
+        if column not in columns:
+            raise ValueError(f"Столбец {column} не существует.")
+
+
 def handle_crud(command, metadata):
     """Обрабатывает команды работы с записями."""
     match = re.fullmatch(
@@ -75,8 +89,13 @@ def handle_crud(command, metadata):
         table_name, values_text = match.groups()
         values = parse_values(values_text)
         data = insert(metadata, table_name, values)
+
+        if data is None:
+            return True
+
         save_table_data(table_name, data)
-        print(f'Запись с ID={data[-1]["ID"]} успешно добавлена.')
+        select_cache(clear=True)
+        print(f"Запись с ID={data[-1]['ID']} успешно добавлена.")
         return True
 
     match = re.fullmatch(
@@ -91,8 +110,20 @@ def handle_crud(command, metadata):
             raise ValueError(f'Таблица "{table_name}" не существует.')
 
         where_clause = parse_condition(condition) if condition else None
-        data = load_table_data(table_name)
-        records = select(data, where_clause)
+        validate_where(where_clause, metadata[table_name])
+        cache_key = (table_name, condition)
+
+        records = select_cache(cache_key)
+
+        if records is None:
+            data = load_table_data(table_name)
+            records = select(data, where_clause)
+
+            if records is None:
+                return True
+
+            select_cache(cache_key, records)
+
         print_records(records, metadata[table_name])
         return True
 
@@ -109,6 +140,7 @@ def handle_crud(command, metadata):
 
         set_clause = parse_condition(set_text)
         where_clause = parse_condition(where_text)
+        validate_where(where_clause, metadata[table_name])
         data = load_table_data(table_name)
         updated_data = update(
             data,
@@ -116,7 +148,12 @@ def handle_crud(command, metadata):
             where_clause,
             metadata[table_name],
         )
+
+        if updated_data is None:
+            return True
+
         save_table_data(table_name, updated_data)
+        select_cache(clear=True)
         print(f'Записи таблицы "{table_name}" успешно обновлены.')
         return True
 
@@ -132,9 +169,15 @@ def handle_crud(command, metadata):
             raise ValueError(f'Таблица "{table_name}" не существует.')
 
         where_clause = parse_condition(where_text)
+        validate_where(where_clause, metadata[table_name])
         data = load_table_data(table_name)
         updated_data = delete(data, where_clause)
+
+        if updated_data is None:
+            return True
+
         save_table_data(table_name, updated_data)
+        select_cache(clear=True)
         print(f'Записи таблицы "{table_name}" успешно удалены.')
         return True
 
@@ -152,8 +195,7 @@ def handle_crud(command, metadata):
         print(
             "Столбцы: "
             + ", ".join(
-                f"{name}:{column_type}"
-                for name, column_type in columns.items()
+                f"{name}:{column_type}" for name, column_type in columns.items()
             )
         )
         print(f"Количество записей: {len(data)}")
@@ -193,12 +235,15 @@ def run():
                     print("Ошибка: укажите имя таблицы и столбцы.")
                     continue
 
-                create_table(metadata, args[0], args[1:])
-                save_metadata(METADATA_FILE, metadata)
+                result = create_table(metadata, args[0], args[1:])
+
+                if result is None:
+                    continue
+
+                save_metadata(METADATA_FILE, result)
                 columns = metadata[args[0]]
                 description = ", ".join(
-                    f"{name}:{column_type}"
-                    for name, column_type in columns.items()
+                    f"{name}:{column_type}" for name, column_type in columns.items()
                 )
                 print(f'Таблица "{args[0]}" успешно создана.')
                 print(f"Столбцы: {description}")
@@ -208,8 +253,14 @@ def run():
                     print("Ошибка: укажите имя таблицы.")
                     continue
 
-                drop_table(metadata, args[0])
-                save_metadata(METADATA_FILE, metadata)
+                result = drop_table(metadata, args[0])
+
+                if result is None:
+                    continue
+
+                save_metadata(METADATA_FILE, result)
+                delete_table_data(args[0])
+                select_cache(clear=True)
                 print(f'Таблица "{args[0]}" успешно удалена.')
 
             elif action == "list_tables":

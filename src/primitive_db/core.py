@@ -1,8 +1,14 @@
+from primitive_db.decorators import (
+    confirm_action,
+    handle_db_errors,
+    log_time,
+)
 from primitive_db.utils import load_table_data
 
 ALLOWED_TYPES = {"int", "str", "bool"}
 
 
+@handle_db_errors
 def create_table(metadata, table_name, columns):
     """Создаёт таблицу и добавляет её структуру в метаданные."""
     if table_name in metadata:
@@ -36,7 +42,8 @@ def create_table(metadata, table_name, columns):
     return metadata
 
 
-
+@handle_db_errors
+@confirm_action("удалить таблицу")
 def drop_table(metadata, table_name):
     """Удаляет таблицу из метаданных."""
     if table_name not in metadata:
@@ -46,6 +53,8 @@ def drop_table(metadata, table_name):
     return metadata
 
 
+@handle_db_errors
+@log_time
 def insert(metadata, table_name, values):
     """Добавляет новую запись в таблицу."""
     if table_name not in metadata:
@@ -55,9 +64,7 @@ def insert(metadata, table_name, values):
     data = load_table_data(table_name)
 
     user_columns = {
-        name: column_type
-        for name, column_type in columns.items()
-        if name != "ID"
+        name: column_type for name, column_type in columns.items() if name != "ID"
     }
 
     if len(values) != len(user_columns):
@@ -78,9 +85,7 @@ def insert(metadata, table_name, values):
 
         elif column_type == "bool":
             if value.lower() not in ("true", "false"):
-                raise ValueError(
-                    f"Столбец {column_name} должен иметь тип bool."
-                )
+                raise ValueError(f"Столбец {column_name} должен иметь тип bool.")
             converted_value = value.lower() == "true"
 
         else:
@@ -95,6 +100,8 @@ def insert(metadata, table_name, values):
     return data
 
 
+@handle_db_errors
+@log_time
 def select(table_data, where_clause=None):
     """Возвращает все записи или записи, подходящие под условие."""
     if where_clause is None:
@@ -103,44 +110,40 @@ def select(table_data, where_clause=None):
     return [
         record
         for record in table_data
-        if all(
-            record.get(column) == value
-            for column, value in where_clause.items()
-        )
+        if all(record.get(column) == value for column, value in where_clause.items())
     ]
 
 
+@handle_db_errors
 def update(table_data, set_clause, where_clause, columns):
     """Обновляет записи с проверкой типов по схеме таблицы."""
     for column, value in set_clause.items():
+        if column == "ID":
+            raise ValueError("Изменение столбца ID запрещено.")
+
         if column not in columns:
             raise ValueError(f"Столбец {column} не существует.")
 
         expected_type = columns[column]
 
         if type(value).__name__ != expected_type:
-            raise ValueError(
-                f"Неверный тип данных для столбца {column}."
-            )
+            raise ValueError(f"Неверный тип данных для столбца {column}.")
 
     for record in table_data:
-        if all(
-            record.get(column) == value
-            for column, value in where_clause.items()
-        ):
+        if all(record.get(column) == value for column, value in where_clause.items()):
             record.update(set_clause)
 
     return table_data
 
 
+@handle_db_errors
+@confirm_action("удалить записи")
 def delete(table_data, where_clause):
     """Удаляет записи, соответствующие условию."""
     return [
         record
         for record in table_data
         if not all(
-            record.get(column) == value
-            for column, value in where_clause.items()
+            record.get(column) == value for column, value in where_clause.items()
         )
     ]
-

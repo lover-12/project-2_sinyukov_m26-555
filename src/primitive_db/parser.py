@@ -1,4 +1,3 @@
-
 def parse_value(value):
     """Преобразует значение из команды в тип Python."""
     if value.startswith('"') and value.endswith('"'):
@@ -13,9 +12,7 @@ def parse_value(value):
     try:
         return int(value)
     except ValueError:
-        raise ValueError(
-            f"Некорректное значение: {value}"
-        ) from None
+        raise ValueError(f"Некорректное значение: {value}") from None
 
 
 def parse_condition(condition):
