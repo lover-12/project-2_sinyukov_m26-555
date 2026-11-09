@@ -53,3 +53,20 @@ def log_time(func):
             )
 
     return wrapper
+
+
+def create_cacher():
+    """Создаёт замыкание для кеширования результатов запросов."""
+    cache = {}
+
+    def cacher(key=None, value=None, clear=False):
+        if clear:
+            cache.clear()
+            return None
+
+        if value is not None:
+            cache[key] = value
+
+        return cache.get(key)
+
+    return cacher

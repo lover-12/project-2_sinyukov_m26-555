@@ -37,23 +37,6 @@ def save_table_data(table_name, data):
         json.dump(data, file, ensure_ascii=False, indent=4)
 
 
-def create_cacher():
-    """Создаёт замыкание для кеширования результатов запросов."""
-    cache = {}
-
-    def cacher(key=None, value=None, clear=False):
-        if clear:
-            cache.clear()
-            return None
-
-        if value is not None:
-            cache[key] = value
-
-        return cache.get(key)
-
-    return cacher
-
-
 def delete_table_data(table_name):
     """Удаляет JSON-файл с записями таблицы."""
     filepath = Path("data") / f"{table_name}.json"
